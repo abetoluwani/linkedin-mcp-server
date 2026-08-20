@@ -2,27 +2,14 @@
 
 <p align="left">
   <a href="https://pypi.org/project/mcp-server-linkedin/" target="_blank"><img src="https://img.shields.io/pypi/v/mcp-server-linkedin?color=blue" alt="PyPI"></a>
-  <a href="https://github.com/stickerdaniel/linkedin-mcp-server/actions/workflows/ci.yml" target="_blank"><img src="https://github.com/stickerdaniel/linkedin-mcp-server/actions/workflows/ci.yml/badge.svg?branch=main" alt="CI Status"></a>
-  <a href="https://github.com/stickerdaniel/linkedin-mcp-server/actions/workflows/release.yml" target="_blank"><img src="https://github.com/stickerdaniel/linkedin-mcp-server/actions/workflows/release.yml/badge.svg?branch=main" alt="Release"></a>
-  <a href="https://github.com/stickerdaniel/linkedin-mcp-server/blob/main/LICENSE" target="_blank"><img src="https://img.shields.io/badge/License-Apache%202.0-%233fb950?labelColor=32383f" alt="License"></a>
+  <a href="https://github.com/abetoluwani/linkedin-mcp-server/actions/workflows/ci.yml" target="_blank"><img src="https://github.com/abetoluwani/linkedin-mcp-server/actions/workflows/ci.yml/badge.svg?branch=main" alt="CI Status"></a>
+  <a href="https://github.com/abetoluwani/linkedin-mcp-server/actions/workflows/release.yml" target="_blank"><img src="https://github.com/abetoluwani/linkedin-mcp-server/actions/workflows/release.yml/badge.svg?branch=main" alt="Release"></a>
+  <a href="https://github.com/abetoluwani/linkedin-mcp-server/blob/main/LICENSE" target="_blank"><img src="https://img.shields.io/badge/License-Apache%202.0-%233fb950?labelColor=32383f" alt="License"></a>
 </p>
 
 > **Disclaimer:** This is an independent, community project. It is not affiliated with, authorized by, endorsed by, or sponsored by LinkedIn Corporation or Microsoft. "LinkedIn" is a registered trademark of LinkedIn Corporation and is used here only descriptively to identify the third-party service this software interoperates with.
 
 An MCP server that lets AI assistants like Claude read LinkedIn data through your own logged-in browser session. Access profiles and companies, search for jobs, or get job details.
-
-## Sponsor
-
-<p align="center">
-  <a href="https://golink.onl/unipile-banner" target="_blank">
-    <picture>
-      <source media="(prefers-color-scheme: dark)" srcset="https://github.com/user-attachments/assets/c2e7f3b4-6812-4f28-8728-10f882a44e0e">
-      <img src="https://github.com/user-attachments/assets/89ab8932-ae79-41c2-8416-a699e924218b" alt="Unipile, one API for every LinkedIn feature" width="100%">
-    </picture>
-  </a>
-</p>
-
-This MCP server is **free** and **open source**, supported by [**Unipile**](https://golink.onl/unipile-link). It runs locally with your own browser session. Unipile is the fully managed cloud alternative: a hosted LinkedIn API for Classic, Sales Navigator, and Recruiter that handles auth, sessions, and infrastructure for you. [Try it free for 7 days →](https://golink.onl/unipile-free-trial)
 
 ---
 
@@ -37,21 +24,21 @@ This MCP server is **free** and **open source**, supported by [**Unipile**](http
 
 | Tool | Description | Status |
 |------|-------------|--------|
-| `get_person_profile` | Get profile info with explicit section selection (experience, education, interests, honors, languages, certifications, skills, projects, contact_info, posts) | [#590](https://github.com/stickerdaniel/linkedin-mcp-server/issues/590) |
-| `get_my_profile` | Get the authenticated user's own LinkedIn profile (same sections as get_person_profile) | [#590](https://github.com/stickerdaniel/linkedin-mcp-server/issues/590) |
-| `connect_with_person` | Send a connection request or accept an incoming one, with optional note | [#407](https://github.com/stickerdaniel/linkedin-mcp-server/issues/407) [#432](https://github.com/stickerdaniel/linkedin-mcp-server/issues/432) [#454](https://github.com/stickerdaniel/linkedin-mcp-server/issues/454) [#629](https://github.com/stickerdaniel/linkedin-mcp-server/issues/629) |
+| `get_person_profile` | Get profile info with explicit section selection (experience, education, interests, honors, languages, certifications, skills, projects, contact_info, posts) | [#590](https://github.com/abetoluwani/linkedin-mcp-server/issues/590) |
+| `get_my_profile` | Get the authenticated user's own LinkedIn profile (same sections as get_person_profile) | [#590](https://github.com/abetoluwani/linkedin-mcp-server/issues/590) |
+| `connect_with_person` | Send a connection request or accept an incoming one, with optional note | [#407](https://github.com/abetoluwani/linkedin-mcp-server/issues/407) [#432](https://github.com/abetoluwani/linkedin-mcp-server/issues/432) [#454](https://github.com/abetoluwani/linkedin-mcp-server/issues/454) [#629](https://github.com/abetoluwani/linkedin-mcp-server/issues/629) |
 | `get_sidebar_profiles` | Extract profile URLs from sidebar recommendation sections ("More profiles for you", "Explore premium profiles", "People you may know") on a profile page | working |
 | `get_inbox` | List recent conversations from the LinkedIn messaging inbox | working |
 | `get_conversation` | Read a specific messaging conversation by username or thread ID | working |
 | `search_conversations` | Search messages by keyword | working |
-| `send_message` | Send a message to a LinkedIn user (requires confirmation) | [#433](https://github.com/stickerdaniel/linkedin-mcp-server/issues/433) [#441](https://github.com/stickerdaniel/linkedin-mcp-server/issues/441) [#483](https://github.com/stickerdaniel/linkedin-mcp-server/issues/483) [#560](https://github.com/stickerdaniel/linkedin-mcp-server/issues/560) [#573](https://github.com/stickerdaniel/linkedin-mcp-server/issues/573) |
+| `send_message` | Send a message to a LinkedIn user (requires confirmation) | [#433](https://github.com/abetoluwani/linkedin-mcp-server/issues/433) [#441](https://github.com/abetoluwani/linkedin-mcp-server/issues/441) [#483](https://github.com/abetoluwani/linkedin-mcp-server/issues/483) [#560](https://github.com/abetoluwani/linkedin-mcp-server/issues/560) [#573](https://github.com/abetoluwani/linkedin-mcp-server/issues/573) |
 | `get_company_profile` | Extract company information with explicit section selection (posts, jobs); about-section references may include a `company_urn` entry carrying the numeric id used by LinkedIn's people-search `currentCompany` URL facet | working |
 | `get_company_posts` | Get recent posts from a company's LinkedIn feed | working |
 | `search_companies` | Search for companies on LinkedIn by keywords | working |
 | `get_company_employees` | List employees at a company from the /people/ page, with optional keyword filter | working |
 | `search_jobs` | Search for jobs with keywords and location filters | working |
 | `get_saved_jobs` | List job postings saved by the authenticated user | working |
-| `search_people` | Search for people by keywords, location, connection degree (1st/2nd/3rd), and current company | [#526](https://github.com/stickerdaniel/linkedin-mcp-server/issues/526) |
+| `search_people` | Search for people by keywords, location, connection degree (1st/2nd/3rd), and current company | [#526](https://github.com/abetoluwani/linkedin-mcp-server/issues/526) |
 | `get_job_details` | Get detailed information about a specific job posting | working |
 | `get_feed` | Get recent posts from the authenticated user's home feed | working |
 | `search_posts` | Search posts/content globally by keyword (the "Posts" tab) with an optional recency filter (past-24h/past-week/past-month) | working |
@@ -59,7 +46,7 @@ This MCP server is **free** and **open source**, supported by [**Unipile**](http
 | `begin_linkedin_login` | Starts or explains the user-controlled login flow; never accepts a LinkedIn password | working |
 | `get_post_engagement_status` | Read the account's visible standard reaction and optional exact self-comment on one direct post permalink | experimental |
 | `like_post` | Add one standard Like only with `confirm_like=true`; reports success only after visible final-state verification | experimental |
-| `comment_on_post` | Submit one comment only with `confirm_comment=true`; prevents exact duplicates and requires visible text-plus-authorship verification | experimental; [#549](https://github.com/stickerdaniel/linkedin-mcp-server/issues/549) |
+| `comment_on_post` | Submit one comment only with `confirm_comment=true`; prevents exact duplicates and requires visible text-plus-authorship verification | experimental; [#549](https://github.com/abetoluwani/linkedin-mcp-server/issues/549) |
 | `close_session` | Close browser session and clean up resources | working |
 
 <br/>
@@ -272,7 +259,7 @@ while a container is running.
 
 **One-click installation** for Claude Desktop users:
 
-1. Download the latest `.mcpb` artifact from [releases](https://github.com/stickerdaniel/linkedin-mcp-server/releases/latest)
+1. Download the latest `.mcpb` artifact from [releases](https://github.com/abetoluwani/linkedin-mcp-server/releases/latest)
 2. Click the downloaded `.mcpb` file to install it into Claude Desktop
 3. Call any LinkedIn tool
 
@@ -327,7 +314,7 @@ mkdir -p ~/.linkedin-mcp
 docker run -it --rm \
   -v ~/.linkedin-mcp:/home/pwuser/.linkedin-mcp \
   -p 127.0.0.1:6080:6080 \
-  stickerdaniel/linkedin-mcp-server:latest \
+  abetoluwani/linkedin-mcp-server:latest \
   --login --login-viewer
 ```
 
@@ -345,7 +332,7 @@ Keep the `-v ~/.linkedin-mcp:/home/pwuser/.linkedin-mcp` mount on every later `d
       "args": [
         "run", "--rm", "-i",
         "-v", "~/.linkedin-mcp:/home/pwuser/.linkedin-mcp",
-        "stickerdaniel/linkedin-mcp-server:latest"
+        "abetoluwani/linkedin-mcp-server:latest"
       ]
     }
   }
@@ -396,7 +383,7 @@ Keep the `-v ~/.linkedin-mcp:/home/pwuser/.linkedin-mcp` mount on every later `d
 docker run -it --rm \
   -v ~/.linkedin-mcp:/home/pwuser/.linkedin-mcp \
   -p 127.0.0.1:8080:8080 \
-  stickerdaniel/linkedin-mcp-server:latest \
+  abetoluwani/linkedin-mcp-server:latest \
   --transport streamable-http --host 0.0.0.0 --port 8080 --path /mcp
 ```
 
@@ -508,7 +495,7 @@ belongs behind something that provides it.
 
 ## 🐍 Local Setup (Develop & Contribute)
 
-Contributions are welcome! See [CONTRIBUTING.md](CONTRIBUTING.md) for architecture guidelines and checklists. Please [open an issue](https://github.com/stickerdaniel/linkedin-mcp-server/issues) first to discuss the feature or bug fix before submitting a PR.
+Contributions are welcome! See [CONTRIBUTING.md](CONTRIBUTING.md) for architecture guidelines and checklists. Please [open an issue](https://github.com/abetoluwani/linkedin-mcp-server/issues) first to discuss the feature or bug fix before submitting a PR.
 
 **Prerequisites:** [Git](https://git-scm.com/downloads) and [uv](https://docs.astral.sh/uv/) installed
 
@@ -516,7 +503,7 @@ Contributions are welcome! See [CONTRIBUTING.md](CONTRIBUTING.md) for architectu
 
 ```bash
 # 1. Clone repository
-git clone https://github.com/stickerdaniel/linkedin-mcp-server
+git clone https://github.com/abetoluwani/linkedin-mcp-server
 cd linkedin-mcp-server
 
 # 2. Install UV package manager (if not already installed)
@@ -662,7 +649,7 @@ uv run -m linkedin_mcp_server --transport streamable-http --host 127.0.0.1 --por
 > **FAQ**
 >
 > **Is this safe to use? Will I get banned?**
-> This tool controls a real browser session; it doesn't exploit undocumented APIs or bypass authentication. LinkedIn's User Agreement prohibits automated access, and accounts using automated tools can be restricted or banned. Use at your own risk; there is no guarantee of account safety. If you encounter any issues, let me know in the [Discussions](https://github.com/stickerdaniel/linkedin-mcp-server/discussions).
+> This tool controls a real browser session; it doesn't exploit undocumented APIs or bypass authentication. LinkedIn's User Agreement prohibits automated access, and accounts using automated tools can be restricted or banned. Use at your own risk; there is no guarantee of account safety. If you encounter any issues, let me know in the [Discussions](https://github.com/abetoluwani/linkedin-mcp-server/discussions).
 >
 > **What if my agents execute too many actions?**
 > Tool calls run sequentially through a queue. You are responsible for the volume of automation you run; use it sparingly and prompt your agents responsibly.
