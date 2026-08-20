@@ -55,10 +55,25 @@ This MCP server is **free** and **open source**, supported by [**Unipile**](http
 | `get_job_details` | Get detailed information about a specific job posting | working |
 | `get_feed` | Get recent posts from the authenticated user's home feed | working |
 | `search_posts` | Search posts/content globally by keyword (the "Posts" tab) with an optional recency filter (past-24h/past-week/past-month) | working |
+| `get_login_status` | Read-only session preflight; reports whether the authenticated LinkedIn session is ready, missing, expired, conflicted, or unknown | working |
+| `begin_linkedin_login` | Starts or explains the user-controlled login flow; never accepts a LinkedIn password | working |
+| `get_post_engagement_status` | Read the account's visible standard reaction and optional exact self-comment on one direct post permalink | experimental |
+| `like_post` | Add one standard Like only with `confirm_like=true`; reports success only after visible final-state verification | experimental |
+| `comment_on_post` | Submit one comment only with `confirm_comment=true`; prevents exact duplicates and requires visible text-plus-authorship verification | experimental; [#549](https://github.com/stickerdaniel/linkedin-mcp-server/issues/549) |
 | `close_session` | Close browser session and clean up resources | working |
 
 <br/>
 <br/>
+
+## Login-First Engagement Workflow
+
+Engagement actions are deliberately **login-first and fail closed**. Call `get_login_status` before post discovery or any action. If it returns `login_required`, `expired`, `profile_conflict`, or `unknown`, do not call `like_post` or `comment_on_post`. Run `begin_linkedin_login` in a local runtime or use the explicit Docker `--login --login-viewer` flow, complete sign-in directly in the browser, then call `get_login_status` again.
+
+`like_post` and `comment_on_post` accept only direct `/feed/update/<URN>/` or `/posts/<slug>` permalinks. Each needs an explicit confirmation argument. A dry run does not click or type. A Like is not reported as successful until the visible reaction state is re-read; a comment is not reported as successful until the exact text and the authenticated author are both visible on the target post. Existing reactions and exact duplicate self-comments are left unchanged and returned as idempotent receipts.
+
+The first release supports the standard Like reaction and currently uses conservative English-language post action surfaces. If the action surface is ambiguous, unavailable, or cannot be verified, the tools return a non-success receipt rather than guessing or claiming completion. A session ready result is necessary but never sufficient to write: each call still requires its own explicit confirmation.
+
+> **Docker:** the container does not complete interactive login by itself. Run the documented host-side `--login --login-viewer` command, sign in through the viewer, let it exit cleanly, and then recheck `get_login_status`.
 
 ## 🚀 uvx Setup (Recommended - Universal)
 

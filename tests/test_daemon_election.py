@@ -1488,8 +1488,13 @@ class TestRealOwner:
             # all — including `close_session`, the one defined inline rather than
             # in a `register_*` call.
             assert "get_person_profile" in names
+            assert "get_login_status" in names
+            assert "begin_linkedin_login" in names
+            assert "get_post_engagement_status" in names
+            assert "like_post" in names
+            assert "comment_on_post" in names
             assert "close_session" in names
-            assert len(names) == 19, sorted(names)
+            assert len(names) == 24, sorted(names)
         finally:
             _stop(result.get("pid"))
 

@@ -92,6 +92,44 @@ async def is_logged_in(page: Page) -> bool:
         raise
 
 
+async def has_auth_cookie(page: Page) -> bool:
+    """Return whether the active browser context has a non-empty ``li_at`` cookie.
+
+    LinkedIn may render authenticated-looking navigation before 2FA, captcha, or
+    another security checkpoint has issued the actual session cookie. A page
+    signal alone is therefore not sufficient to say user-controlled login is
+    complete.
+    """
+    try:
+        cookies = await page.context.cookies()
+    except PlaywrightTimeoutError:
+        logger.warning("Timed out reading LinkedIn auth cookies")
+        return False
+    except Exception:
+        logger.debug("Could not read LinkedIn auth cookies", exc_info=True)
+        return False
+    return any(
+        cookie.get("name") == "li_at" and bool(cookie.get("value"))
+        for cookie in cookies
+    )
+
+
+def _login_pages(page: Page) -> list[Page]:
+    """Return all usable pages in the login context, preserving the opener first.
+
+    LinkedIn and identity providers can complete authentication in a newly opened
+    tab. Watching only the original page makes a valid user login time out even
+    after ``li_at`` was written into the persistent profile.
+    """
+    try:
+        context_pages = getattr(page.context, "pages", None)
+    except Exception:
+        context_pages = None
+    if not isinstance(context_pages, list):
+        return [page]
+    return [page, *(candidate for candidate in context_pages if candidate is not page)]
+
+
 async def detect_auth_barrier(page: Page) -> str | None:
     """Detect LinkedIn auth/account-picker barriers on the current page."""
     return await _detect_auth_barrier(page, include_body_text=True)
@@ -264,16 +302,19 @@ async def wait_for_manual_login(page: Page, timeout: int = 300000) -> None:
     start_time = loop.time()
 
     while True:
-        if await resolve_remember_me_prompt(page):
-            logger.info("Resolved saved-account chooser during manual login flow")
-            elapsed = (loop.time() - start_time) * 1000
-            if timeout and elapsed > timeout:
-                raise _timeout_error()
-            continue
-
-        if await is_logged_in(page):
-            logger.info("Manual login completed successfully")
-            return
+        pages = _login_pages(page)
+        for candidate in pages:
+            if await resolve_remember_me_prompt(candidate):
+                logger.info("Resolved saved-account chooser during manual login flow")
+                elapsed = (loop.time() - start_time) * 1000
+                if timeout and elapsed > timeout:
+                    raise _timeout_error()
+                break
+        else:
+            for candidate in pages:
+                if await is_logged_in(candidate) and await has_auth_cookie(candidate):
+                    logger.info("Manual login completed successfully")
+                    return
 
         elapsed = (loop.time() - start_time) * 1000
         if timeout and elapsed > timeout:

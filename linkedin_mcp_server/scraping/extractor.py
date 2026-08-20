@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import dataclass
+import hashlib
 import json
 import logging
 import re
@@ -4398,3 +4399,462 @@ class LinkedInExtractor:
             {"selectors": selectors},
         )
         return result
+
+    # ------------------------------------------------------------------
+    # Login-gated post engagement actions
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _canonical_post_url(post_url: str) -> str:
+        """Validate and normalize a supported LinkedIn post permalink.
+
+        Only direct ``/feed/update/<URN>/`` and ``/posts/<slug>`` forms are
+        accepted. Refusing ambiguous routes is deliberate: a write tool must not
+        navigate to a search, profile, or redirect page and then guess which
+        post was intended.
+        """
+        candidate = post_url.strip()
+        if candidate.startswith("/"):
+            candidate = f"https://www.linkedin.com{candidate}"
+        parsed = urlparse(candidate)
+        host = parsed.hostname or ""
+        path = parsed.path.rstrip("/")
+        valid_host = host == "linkedin.com" or host.endswith(".linkedin.com")
+        valid_path = bool(
+            re.fullmatch(r"/feed/update/urn:li:(?:activity|share):[^/]+", path)
+            or re.fullmatch(r"/posts/[^/]+", path)
+        )
+        if parsed.scheme not in {"http", "https"} or not valid_host or not valid_path:
+            raise ValueError(
+                "post_url must be a direct LinkedIn /feed/update/<URN>/ or /posts/<slug> permalink."
+            )
+        return f"https://www.linkedin.com{path}/"
+
+    @staticmethod
+    def _engagement_receipt(
+        post_url: str,
+        action: str,
+        status: str,
+        message: str,
+        *,
+        request_id: str | None = None,
+        initial_state: dict[str, Any] | None = None,
+        final_state: dict[str, Any] | None = None,
+        verified: bool = False,
+        evidence: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Build a receipt that never equates a click attempt with success."""
+        return {
+            "post_url": post_url,
+            "action": action,
+            "request_id": request_id,
+            "status": status,
+            "message": message,
+            "initial_state": initial_state or {},
+            "final_state": final_state or {},
+            "verified": verified,
+            "evidence": evidence or {},
+        }
+
+    async def _page_language(self) -> str:
+        """Return the document language, defaulting safely to English."""
+        try:
+            value = await self._page.evaluate(
+                "() => document.documentElement.lang || navigator.language || ''"
+            )
+        except Exception:
+            value = ""
+        return str(value or "en").lower().split("-", maxsplit=1)[0]
+
+    async def _reaction_state(self) -> dict[str, Any]:
+        """Read one structural post-reaction control without clicking it.
+
+        LinkedIn's reaction-control attributes are not fully locale-neutral. The
+        implementation therefore uses the relationship between an action button
+        and its sibling reaction-menu button as the primary structural signal and
+        enables the first release only for a documented English state label. An
+        unknown or ambiguous surface is returned as unavailable rather than being
+        guessed at.
+        """
+        state = await self._page.evaluate(
+            """() => {
+                const main = document.querySelector('main') || document.body;
+                const candidates = Array.from(main.querySelectorAll('button[aria-label]'))
+                    .filter(button => {
+                        const sibling = button.nextElementSibling;
+                        return sibling instanceof HTMLButtonElement
+                            && sibling.hasAttribute('aria-label')
+                            && (button.innerText || '').trim().length > 0;
+                    })
+                    .map(button => ({
+                        ariaLabel: button.getAttribute('aria-label') || '',
+                        text: (button.innerText || '').trim(),
+                    }));
+                return { candidates };
+            }"""
+        )
+        candidates = state.get("candidates", []) if isinstance(state, dict) else []
+        if len(candidates) != 1:
+            return {"available": False, "reason": "ambiguous_reaction_surface"}
+        candidate = candidates[0]
+        label = str(candidate.get("ariaLabel") or "")
+        language = await self._page_language()
+        if language != "en":
+            return {
+                "available": False,
+                "reason": "unsupported_reaction_locale",
+                "language": language,
+            }
+        if label == "Reaction button state: no reaction":
+            return {
+                "available": True,
+                "reacted": False,
+                "raw_label": label,
+                "language": language,
+            }
+        if label.startswith("Reaction button state:"):
+            return {
+                "available": True,
+                "reacted": True,
+                "raw_label": label,
+                "language": language,
+            }
+        return {
+            "available": False,
+            "reason": "unknown_reaction_state",
+            "language": language,
+        }
+
+    async def _click_standard_like(self) -> bool:
+        """Click the uniquely identified standard reaction control once."""
+        button = self._page.locator("main button[aria-label^='Reaction button state:']")
+        if await button.count() != 1:
+            return False
+        try:
+            await button.first.scroll_into_view_if_needed(timeout=5000)
+            await button.first.click(timeout=5000)
+            return True
+        except Exception:
+            logger.debug("Could not click standard Like reaction", exc_info=True)
+            return False
+
+    async def _self_profile_url_for_engagement(self) -> str | None:
+        """Resolve the authenticated profile URL without scraping profile content."""
+        await self._navigate_to_page("https://www.linkedin.com/in/me/")
+        current_url = self._page.url
+        parsed = urlparse(current_url)
+        if parsed.hostname and re.fullmatch(r"/in/[^/]+/?", parsed.path):
+            return f"https://www.linkedin.com{parsed.path.rstrip('/')}/"
+        return None
+
+    async def _matching_self_comment(
+        self, *, self_profile_url: str, comment_text: str
+    ) -> dict[str, Any]:
+        """Find an exact comment by the authenticated profile on the current post.
+
+        The evaluator purposely requires an author anchor and exact comment text
+        in the same small semantic container. If LinkedIn changes that structure,
+        the result is unverified rather than falsely claiming the comment exists.
+        """
+        profile_path = urlparse(self_profile_url).path.rstrip("/")
+        result = await self._page.evaluate(
+            """({ profilePath, commentText }) => {
+                const normalize = value => (value || '').replace(/\\s+/g, ' ').trim();
+                const main = document.querySelector('main') || document.body;
+                const authorAnchors = Array.from(main.querySelectorAll('a[href*="/in/"]'))
+                    .filter(anchor => {
+                        try {
+                            return new URL(anchor.href, location.origin).pathname.replace(/\\/$/, '') === profilePath;
+                        } catch {
+                            return false;
+                        }
+                    });
+                const containers = authorAnchors.map(anchor =>
+                    anchor.closest('article, [role="article"], li') || anchor.parentElement
+                ).filter(Boolean);
+                const matching = containers.filter(container =>
+                    normalize(container.innerText).includes(normalize(commentText))
+                );
+                return {
+                    authorAnchors: authorAnchors.length,
+                    matchingComments: matching.length,
+                };
+            }""",
+            {"profilePath": profile_path, "commentText": comment_text},
+        )
+        if not isinstance(result, dict):
+            return {"present": False, "author_anchors": 0, "matches": 0}
+        return {
+            "present": int(result.get("matchingComments") or 0) > 0,
+            "author_anchors": int(result.get("authorAnchors") or 0),
+            "matches": int(result.get("matchingComments") or 0),
+        }
+
+    async def _comment_controls(self) -> dict[str, Any]:
+        """Return conservative English-only controls for the first comment release."""
+        language = await self._page_language()
+        if language != "en":
+            return {
+                "available": False,
+                "reason": "unsupported_comment_locale",
+                "language": language,
+            }
+        buttons = self._page.locator("main button")
+        count = await buttons.count()
+        comment_buttons: list[int] = []
+        for index in range(count):
+            text = (await buttons.nth(index).inner_text()).strip()
+            if text == "Comment":
+                comment_buttons.append(index)
+        return {
+            "available": len(comment_buttons) == 1,
+            "reason": "" if len(comment_buttons) == 1 else "ambiguous_comment_action",
+            "index": comment_buttons[0] if len(comment_buttons) == 1 else None,
+            "language": language,
+        }
+
+    async def _open_comment_composer(self) -> Any | None:
+        """Open and return the one post-level editable comment surface."""
+        controls = await self._comment_controls()
+        if not controls.get("available"):
+            return None
+        button = self._page.locator("main button").nth(int(controls["index"]))
+        try:
+            await button.scroll_into_view_if_needed(timeout=5000)
+            await button.click(timeout=5000)
+        except Exception:
+            logger.debug("Could not open comment composer", exc_info=True)
+            return None
+        editor = self._page.locator("main textarea, main [contenteditable='true']")
+        try:
+            if await editor.count() != 1:
+                return None
+            await editor.first.wait_for(state="visible", timeout=5000)
+            return editor.first
+        except Exception:
+            logger.debug("Comment composer did not become usable", exc_info=True)
+            return None
+
+    async def _submit_comment(self, editor: Any, comment_text: str) -> bool:
+        """Type one comment and submit it once through the visible English control."""
+        try:
+            await editor.fill(comment_text)
+        except Exception:
+            logger.debug("Could not type comment text", exc_info=True)
+            return False
+        post_buttons = self._page.locator("main button")
+        count = await post_buttons.count()
+        post_indices: list[int] = []
+        for index in range(count):
+            if (await post_buttons.nth(index).inner_text()).strip() == "Post":
+                post_indices.append(index)
+        if len(post_indices) != 1:
+            return False
+        try:
+            await post_buttons.nth(post_indices[0]).click(timeout=5000)
+            return True
+        except Exception:
+            logger.debug("Could not submit comment", exc_info=True)
+            return False
+
+    async def get_post_engagement_status(
+        self, post_url: str, *, comment_text: str | None = None
+    ) -> dict[str, Any]:
+        """Read current Like and optional exact-self-comment state for one post permalink."""
+        canonical_url = self._canonical_post_url(post_url)
+        self_profile_url = await self._self_profile_url_for_engagement()
+        await self._navigate_to_page(canonical_url)
+        await detect_rate_limit(self._page)
+        reaction = await self._reaction_state()
+        comment: dict[str, Any] = {
+            "self_profile_url": self_profile_url,
+            "present": False,
+        }
+        if self_profile_url and comment_text:
+            comment = await self._matching_self_comment(
+                self_profile_url=self_profile_url,
+                comment_text=" ".join(comment_text.split()),
+            )
+            comment["self_profile_url"] = self_profile_url
+        elif self_profile_url:
+            comment = {
+                "self_profile_url": self_profile_url,
+                "verification_requires_comment_text": True,
+            }
+        return {
+            "post_url": canonical_url,
+            "reaction": reaction,
+            "comment": comment,
+            "verified": bool(reaction.get("available")),
+        }
+
+    async def like_post(
+        self,
+        post_url: str,
+        *,
+        confirm_like: bool,
+        request_id: str | None = None,
+    ) -> dict[str, Any]:
+        """Add one standard Like reaction and verify the visible final state."""
+        canonical_url = self._canonical_post_url(post_url)
+        await self._navigate_to_page(canonical_url)
+        await detect_rate_limit(self._page)
+        initial = await self._reaction_state()
+        if not initial.get("available"):
+            return self._engagement_receipt(
+                canonical_url,
+                "like",
+                "action_unavailable",
+                "The post reaction control was ambiguous or unsupported, so no Like was attempted.",
+                request_id=request_id,
+                initial_state=initial,
+            )
+        if initial.get("reacted"):
+            return self._engagement_receipt(
+                canonical_url,
+                "like",
+                "already_liked",
+                "The authenticated account already has a reaction on this post; no click was made.",
+                request_id=request_id,
+                initial_state=initial,
+                final_state=initial,
+                verified=True,
+                evidence={"reaction_state": initial.get("raw_label")},
+            )
+        if not confirm_like:
+            return self._engagement_receipt(
+                canonical_url,
+                "like",
+                "not_submitted",
+                "Dry run only: set confirm_like=true to submit a Like after login has been verified.",
+                request_id=request_id,
+                initial_state=initial,
+            )
+        if not await self._click_standard_like():
+            return self._engagement_receipt(
+                canonical_url,
+                "like",
+                "click_failed",
+                "The standard Like control could not be clicked; no success is claimed.",
+                request_id=request_id,
+                initial_state=initial,
+            )
+        await asyncio.sleep(2.0)
+        final = await self._reaction_state()
+        verified = bool(final.get("available") and final.get("reacted"))
+        return self._engagement_receipt(
+            canonical_url,
+            "like",
+            "verified" if verified else "verification_failed",
+            "LinkedIn visibly shows the account's reaction."
+            if verified
+            else "The Like click was attempted, but the expected visible reaction state could not be confirmed.",
+            request_id=request_id,
+            initial_state=initial,
+            final_state=final,
+            verified=verified,
+            evidence={"reaction_state": final.get("raw_label")} if verified else {},
+        )
+
+    async def comment_on_post(
+        self,
+        post_url: str,
+        comment_text: str,
+        *,
+        confirm_comment: bool,
+        request_id: str | None = None,
+    ) -> dict[str, Any]:
+        """Submit one exact comment and verify visible authorship and text."""
+        canonical_url = self._canonical_post_url(post_url)
+        normalized_comment = " ".join(comment_text.split())
+        if not normalized_comment:
+            raise ValueError("comment_text must contain visible text.")
+        if len(normalized_comment) > 3000:
+            raise ValueError("comment_text must be 3000 characters or fewer.")
+        digest = hashlib.sha256(normalized_comment.encode("utf-8")).hexdigest()[:16]
+        self_profile_url = await self._self_profile_url_for_engagement()
+        if not self_profile_url:
+            return self._engagement_receipt(
+                canonical_url,
+                "comment",
+                "verification_unavailable",
+                "The authenticated profile URL could not be resolved, so no comment was attempted.",
+                request_id=request_id,
+                evidence={"comment_sha256_prefix": digest},
+            )
+        await self._navigate_to_page(canonical_url)
+        await detect_rate_limit(self._page)
+        initial = await self._matching_self_comment(
+            self_profile_url=self_profile_url, comment_text=normalized_comment
+        )
+        if initial["present"]:
+            return self._engagement_receipt(
+                canonical_url,
+                "comment",
+                "duplicate_comment",
+                "An exact matching comment by the authenticated account is already visible; no duplicate was submitted.",
+                request_id=request_id,
+                initial_state=initial,
+                final_state=initial,
+                verified=True,
+                evidence={
+                    "comment_sha256_prefix": digest,
+                    "self_profile_url": self_profile_url,
+                },
+            )
+        if not confirm_comment:
+            return self._engagement_receipt(
+                canonical_url,
+                "comment",
+                "not_submitted",
+                "Dry run only: set confirm_comment=true to submit the comment after login has been verified.",
+                request_id=request_id,
+                initial_state=initial,
+                evidence={"comment_sha256_prefix": digest},
+            )
+        editor = await self._open_comment_composer()
+        if editor is None:
+            return self._engagement_receipt(
+                canonical_url,
+                "comment",
+                "composer_unavailable",
+                "The post comment composer was ambiguous or unavailable, so no comment was attempted.",
+                request_id=request_id,
+                initial_state=initial,
+                evidence={"comment_sha256_prefix": digest},
+            )
+        if not await self._submit_comment(editor, normalized_comment):
+            return self._engagement_receipt(
+                canonical_url,
+                "comment",
+                "submission_failed",
+                "The comment could not be submitted through a unique visible control; no success is claimed.",
+                request_id=request_id,
+                initial_state=initial,
+                evidence={"comment_sha256_prefix": digest},
+            )
+        await asyncio.sleep(2.0)
+        await self._navigate_to_page(canonical_url)
+        await detect_rate_limit(self._page)
+        final = await self._matching_self_comment(
+            self_profile_url=self_profile_url, comment_text=normalized_comment
+        )
+        verified = bool(final["present"])
+        return self._engagement_receipt(
+            canonical_url,
+            "comment",
+            "verified" if verified else "verification_failed",
+            "LinkedIn visibly shows the submitted comment under the authenticated account."
+            if verified
+            else "Comment submission was attempted, but exact text and authorship could not both be verified visibly.",
+            request_id=request_id,
+            initial_state=initial,
+            final_state=final,
+            verified=verified,
+            evidence={
+                "comment_sha256_prefix": digest,
+                "self_profile_url": self_profile_url,
+            }
+            if verified
+            else {"comment_sha256_prefix": digest},
+        )
