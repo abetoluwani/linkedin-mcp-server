@@ -20,6 +20,8 @@ A Model Context Protocol (MCP) server that connects AI assistants to LinkedIn. A
 - **Company Posts**: Get recent posts from a company's LinkedIn feed
 - **Home Feed**: Get recent posts from the authenticated user's LinkedIn home feed
 - **Post Search**: Search posts/content globally by keyword (the "Posts" tab) with an optional recency filter
+- **Login Status**: Read-only verification that a user-authenticated LinkedIn session is ready before an engagement action
+- **Verified Engagement**: Standard Like and comment tools require explicit confirmation, reject ambiguous post targets, prevent duplicate exact self-comments, and report only visibly verified final states
 - **Compact References**: Return typed per-section links alongside readable text without shipping full-page markdown
 
 ## Quick Start
@@ -60,6 +62,8 @@ If an older rootful Docker run left that host directory owned by root, repair it
 ```
 
 > **Note:** Plain `--login` does not publish a viewer. Use `--login --login-viewer` only for the one-shot login container, with port 6080 published to loopback.
+>
+> **Login-first engagement:** Call `get_login_status` before `like_post` or `comment_on_post`. If it does not return `ready`, do not attempt a write. Run the one-shot viewer login command above, finish sign-in directly in the browser, wait for it to exit cleanly, and then call `get_login_status` again. The container never accepts a LinkedIn password. Every write additionally needs its own confirmation flag and is reported as complete only after the resulting LinkedIn state is visibly re-read.
 >
 > **Note:** `stdio` is the default transport. Add `--transport streamable-http` only when you specifically want HTTP mode.
 >
